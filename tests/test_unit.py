@@ -121,6 +121,20 @@ class TestCkanActionCalls(unittest.TestCase):
         assert json.loads(httpretty.last_request().body)['url_type'] == 'datapusher'
 
     @httpretty.activate
+    def test_datastore_resource_exists(self):
+        ckan_url = 'http://www.ckan.org'
+        url = '{0}/api/3/action/datastore_search'.format(ckan_url)
+        httpretty.register_uri(httpretty.POST, url,
+                               content_type="application/json",
+                               responses=[
+                                   httpretty.Response(body=u'{"success": true}', status=200),
+                                   httpretty.Response(body=u'{"success": false}', status=404),
+                               ])
+
+        assert jobs.datastore_resource_exists('found', 'api-key', ckan_url)
+        assert not jobs.datastore_resource_exists('not-found', 'api-key', ckan_url)
+
+    @httpretty.activate
     def test_send_resource_to_datastore(self):
         url = 'http://www.ckan.org/api/3/action/datastore_create'
         httpretty.register_uri(httpretty.POST, url,
@@ -130,15 +144,23 @@ class TestCkanActionCalls(unittest.TestCase):
 
 
 class TestCheckResponse(unittest.TestCase):
+    """Unit tests for the check_response() function."""
+
     @httpretty.activate
-    @raises(util.JobError)
-    def test_text_409_with_broken_json(self):
-        httpretty.register_uri(httpretty.GET, 'http://www.ckan.org/',
+    def test_text_409_with_non_json_response(self):
+        """It should raise HTTPError for a 409 with a non-JSON body."""
+        url = 'http://www.ckan.org/'
+        httpretty.register_uri(httpretty.GET, url,
                                body=u"This is someone's text. With ümlauts.",
                                content_type='html/text',
                                status=409)
         r = requests.get('http://www.ckan.org/')
-        jobs.check_response(r, 'http://www.ckan.org/', 'Me')
+        try:
+            jobs.check_response(r, 'http://www.ckan.org/', 'Me')
+            assert False, "check_response() should have raised an exception."
+        except jobs.HTTPError as err:
+            assert err.status_code == 409
+            assert err.request_url == url
 
     @httpretty.activate
     def test_text_200(self):
@@ -150,14 +172,21 @@ class TestCheckResponse(unittest.TestCase):
         jobs.check_response(r, 'http://www.ckan.org/', 'Me')
 
     @httpretty.activate
-    @raises(util.JobError)
     def test_text_500_with_false_success(self):
-        httpretty.register_uri(httpretty.GET, 'http://www.ckan.org/',
+        """It should raise HTTPError if given a 500 with "success": false."""
+        url = 'http://www.ckan.org/'
+        httpretty.register_uri(httpretty.GET, url,
                                body=u'{"success": false}',
                                content_type='html/text',
                                status=500)
         r = requests.get('http://www.ckan.org/')
-        jobs.check_response(r, 'http://www.ckan.org/', 'Me')
+        try:
+            jobs.check_response(r, url, 'Me')
+            assert False, "check_response() should have raised an exception"
+        except jobs.HTTPError as err:
+            assert err.response == '{"success": false}'
+            assert err.status_code == 500
+            assert err.request_url == url
 
     @httpretty.activate
     @raises(util.JobError)

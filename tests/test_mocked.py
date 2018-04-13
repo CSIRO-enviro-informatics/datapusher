@@ -9,7 +9,6 @@ import unittest
 
 import httpretty
 
-import ckanserviceprovider.web as web
 import datapusher.main as main
 import datapusher.jobs as jobs
 import ckanserviceprovider.util as util
@@ -17,7 +16,6 @@ import ckanserviceprovider.util as util
 os.environ['JOB_CONFIG'] = os.path.join(os.path.dirname(__file__),
                                         'settings_test.py')
 
-web.configure()
 app = main.serve_test()
 
 
@@ -69,6 +67,11 @@ class TestImport(unittest.TestCase):
         httpretty.register_uri(httpretty.POST, datastore_url,
                                body=u'{"success": true}',
                                content_type="application/json")
+
+        datastore_check_url = 'http://www.ckan.org/api/3/action/datastore_search'
+        httpretty.register_uri(httpretty.POST, datastore_check_url,
+                               body=json.dumps({'success': True}),
+                               content_type='application/json')
 
     @httpretty.activate
     def test_simple_csv(self):
